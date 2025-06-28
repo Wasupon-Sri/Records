@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Record Form with Firebase</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+  }
+  .container {
+    background: white;
+    max-width: 600px;
+    width: 100%;
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    padding: 30px 40px;
+  }
+  h1 {
+    text-align: center;
+    color: #222;
+    margin-bottom: 25px;
+  }
+  label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    display: block;
+    color: #444;
+  }
+  textarea {
+    width: 100%;
+    height: 160px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    padding: 12px;
+    font-size: 1rem;
+    resize: vertical;
+    margin-bottom: 25px;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+    box-sizing: border-box;
+    font-family: inherit;
+  }
+  .buttons {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 30px;
+    flex-wrap: wrap;
+  }
+  button {
+    background-color: #007bff;
+    border: none;
+    color: white;
+    padding: 14px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s ease;
+    flex: 1;
+    margin: 0 5px 10px 5px;
+  }
+  button.delete {
+    background-color: #dc3545;
+  }
+  button.delete:hover {
+    background-color: #a71d2a;
+  }
+  button.new {
+    background-color: #28a745;
+  }
+  button.new:hover {
+    background-color: #1e7e34;
+  }
+  .record-list {
+    margin-top: 40px;
+  }
+  .record-item {
+    background: #e9ecef;
+    padding: 12px 18px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    color: #333;
+    transition: background-color 0.2s ease;
+  }
+  .record-item:hover {
+    background: #ced4da;
+  }
+  .record-item.selected {
+    background: #007bff;
+    color: white;
+  }
+</style>
+
+<!-- Firebase CDN scripts -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
+
+</head>
+<body>
+  <div class="container">
+    <h1>Record Form</h1>
+
+    <label for="sheetName">Sheet Name</label>
+    <input type="text" id="sheetName" placeholder="Enter sheet name..." />
+
+    <label for="notes">Free Text Notes</label>
+    <textarea id="notes" placeholder="Enter medical notes here..."></textarea>
+
+    <div class="buttons">
+      <button class="new" id="newBtn">New Record</button>
+      <button id="saveBtn">Save Record</button>
+      <button class="delete" id="deleteBtn">Delete Record</button>
+    </div>
+
+    <div class="record-list" id="recordList">
+      <h3>Saved Records</h3>
+      <!-- Records will appear here -->
+    </div>
+  </div>
+
+  <script>
+    // Firebase config and initialization
+    const firebaseConfig = {
+      apiKey: "AIzaSyDBPIWXpJ-ZnuE-clpOseYYENDR5bPpseE",
+      authDomain: "records-savedata.firebaseapp.com",
+      projectId: "records-savedata",
+      storageBucket: "records-savedata.appspot.com",
+      messagingSenderId: "155718735709",
+      appId: "1:155718735709:web:e4d0d388c1892436ab3ab4",
+      measurementId: "G-CKTJNWCYVP"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const analytics = firebase.analytics();
+    const db = firebase.firestore();
+
+    const notesEl = document.getElementById('notes');
+    const sheetNameEl = document.getElementById('sheetName');
+    const recordListEl = document.getElementById('recordList');
+
+    let records = [];
+    let currentRecordId = null;
+
+    // Load records from Firestore
+    async function loadRecordsFromFirestore() {
+      try {
+        const snapshot = await db.collection('medicalRecords').orderBy('createdAt').get();
+        records = [];
+        snapshot.forEach(doc => {
+          records.push({ id: doc.id, ...doc.data() });
+        });
+        renderRecords();
+      } catch (error) {
+        alert('Error loading records: ' + error.message);
+      }
+    }
+
+    // Render records list
+    function renderRecords() {
+      recordListEl.innerHTML = '<h3>Saved Records</h3>';
+      if (records.length === 0) {
+        recordListEl.innerHTML += '<p>No records saved.</p>';
+        return;
+      }
+      records.forEach((rec, index) => {
+        const div = document.createElement('div');
+        div.className = 'record-item' + (rec.id === currentRecordId ? ' selected' : '');
+        div.textContent = rec.sheetName || '(Unnamed)';
+        div.onclick = () => loadRecord(index);
+        recordListEl.appendChild(div);
+      });
+    }
+
+    // Load a single record into form
+    function loadRecord(index) {
+      const rec = records[index];
+      currentRecordId = rec.id;
+      sheetNameEl.value = rec.sheetName;
+      notesEl.value = rec.notes;
+      renderRecords();
+    }
+
+    // Save record to Firestore
+    async function saveRecord() {
+      const sheetName = sheetNameEl.value.trim();
+      const notes = notesEl.value.trim();
+
+      if (!sheetName) {
+        alert('Sheet name is required.');
+        return;
+      }
+
+      try {
+        if (currentRecordId === null) {
+          // Add new record
+          const docRef = await db.collection('medicalRecords').add({
+            sheetName,
+            notes,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+          currentRecordId = docRef.id;
+        } else {
+          // Update existing record
+          await db.collection('medicalRecords').doc(currentRecordId).set({
+            sheetName,
+            notes,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        }
+        alert('Record saved successfully.');
+        loadRecordsFromFirestore();
+      } catch (error) {
+        alert('Error saving record: ' + error.message);
+      }
+    }
+
+    // Delete record from Firestore
+    async function deleteRecord() {
+      if (!currentRecordId) {
+        alert('No record selected to delete.');
+        return;
+      }
+      if (confirm('Are you sure you want to delete this record?')) {
+        try {
+          await db.collection('medicalRecords').doc(currentRecordId).delete();
+          alert('Record deleted.');
+          currentRecordId = null;
+          clearForm();
+          loadRecordsFromFirestore();
+        } catch (error) {
+          alert('Error deleting record: ' + error.message);
+        }
+      }
+    }
+
+    // Clear form inputs
+    function clearForm() {
+      sheetNameEl.value = '';
+      notesEl.value = '';
+      currentRecordId = null;
+      renderRecords();
+    }
+
+    // Event listeners
+    document.getElementById('saveBtn').addEventListener('click', saveRecord);
+    document.getElementById('deleteBtn').addEventListener('click', deleteRecord);
+    document.getElementById('newBtn').addEventListener('click', clearForm);
+
+    // Load records on page load
+    window.onload = () => {
+      loadRecordsFromFirestore();
+    };
+  </script>
+</body>
+</html>
